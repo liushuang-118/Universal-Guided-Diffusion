@@ -499,7 +499,7 @@ def main():
                 img=x_samples_ddim[0].detach(),      
                 gt=og_img_guide[0],                  
                 pred=pred,                           
-                categories=operation.operation_func.categories,     
+                categories=obj_det_cats,     
                 score_thresh=0.8                     
             )
 
