@@ -365,6 +365,60 @@ def main():
 
     #     return final_img
     
+    # def draw_gt_and_detected_boxes(img, gt, pred, categories, obj_det_cats, score_thresh=0.8):
+    #     uint8_image = (img.cpu() * 255).to(torch.uint8)
+
+    #     # 找出 obj_det_cats 在 categories 中的索引
+    #     obj_det_cat_indices = [categories.index(c) for c in obj_det_cats]
+
+    #     # === 1. 过滤并绘制 Ground Truth，只保留目标类别 ===
+    #     gt_boxes = gt["boxes"].cpu()
+    #     gt_labels_idx = gt["labels"].cpu()
+
+    #     # 只保留类别属于 obj_det_cats 的 gt 框
+    #     keep_gt = [i for i, label in enumerate(gt_labels_idx) if label.item() in obj_det_cat_indices]
+    #     gt_boxes = gt_boxes[keep_gt]
+    #     gt_labels_idx = gt_labels_idx[keep_gt]
+    #     gt_labels = [categories[i] for i in gt_labels_idx]
+
+    #     gt_boxed = draw_bounding_boxes(
+    #         uint8_image,
+    #         boxes=gt_boxes,
+    #         labels=gt_labels,
+    #         colors="red",
+    #         width=3,
+    #         font_size=20
+    #     )
+
+    #     # === 2. 过滤预测框（score > 阈值且类别属于obj_det_cats） ===
+    #     pred_boxes = pred["boxes"].cpu()
+    #     pred_labels_idx = pred["labels"].cpu()
+    #     pred_scores = pred["scores"].cpu()
+
+    #     keep_pred = [(pred_scores[i] > score_thresh) and (pred_labels_idx[i].item() in obj_det_cat_indices)
+    #                 for i in range(len(pred_scores))]
+    #     pred_boxes = pred_boxes[keep_pred]
+    #     pred_labels_idx = pred_labels_idx[keep_pred]
+    #     pred_scores = pred_scores[keep_pred]
+
+    #     if pred_boxes.numel() > 0:
+    #         pred_labels = [f"{categories[i]}: {pred_scores[idx]:.2f}" for idx, i in enumerate(pred_labels_idx)]
+
+    #         final_boxed = draw_bounding_boxes(
+    #             gt_boxed,
+    #             boxes=pred_boxes,
+    #             labels=pred_labels,
+    #             colors="green",
+    #             width=3,
+    #             font_size=20
+    #         )
+    #     else:
+    #         final_boxed = gt_boxed
+
+    #     final_img = final_boxed.float() / 255.0
+    #     final_img = final_img * 2 - 1
+
+    #     return final_img
     def draw_gt_and_detected_boxes(img, gt, pred, categories, obj_det_cats, score_thresh=0.8):
         uint8_image = (img.cpu() * 255).to(torch.uint8)
 
@@ -397,16 +451,28 @@ def main():
 
         keep_pred = [(pred_scores[i] > score_thresh) and (pred_labels_idx[i].item() in obj_det_cat_indices)
                     for i in range(len(pred_scores))]
+
         pred_boxes = pred_boxes[keep_pred]
         pred_labels_idx = pred_labels_idx[keep_pred]
         pred_scores = pred_scores[keep_pred]
 
-        if pred_boxes.numel() > 0:
-            pred_labels = [f"{categories[i]}: {pred_scores[idx]:.2f}" for idx, i in enumerate(pred_labels_idx)]
+        # 同一类别只保留置信度最高的框
+        best_per_class = {}
+        for i, (box, label_idx, score) in enumerate(zip(pred_boxes, pred_labels_idx, pred_scores)):
+            label = label_idx.item()
+            if (label not in best_per_class) or (score > best_per_class[label][2]):
+                best_per_class[label] = (box, label_idx, score)
+
+        if best_per_class:
+            filtered_boxes = torch.stack([v[0] for v in best_per_class.values()])
+            filtered_labels_idx = torch.tensor([v[1] for v in best_per_class.values()])
+            filtered_scores = torch.tensor([v[2] for v in best_per_class.values()])
+
+            pred_labels = [f"{categories[i.item()]}: {filtered_scores[idx]:.2f}" for idx, i in enumerate(filtered_labels_idx)]
 
             final_boxed = draw_bounding_boxes(
                 gt_boxed,
-                boxes=pred_boxes,
+                boxes=filtered_boxes,
                 labels=pred_labels,
                 colors="green",
                 width=3,
@@ -419,6 +485,7 @@ def main():
         final_img = final_img * 2 - 1
 
         return final_img
+
 
 
     def iou(box1, box2):
