@@ -439,6 +439,56 @@ def main():
             return 0.0
         return inter_area / union_area
 
+    # def evaluate_detection_metrics(gt, pred, iou_threshold=0.5):
+
+    #     gt_boxes = gt["boxes"].cpu()
+    #     gt_labels = gt["labels"].cpu()
+
+    #     pred_boxes = pred["boxes"].cpu()
+    #     pred_labels = pred["labels"].cpu()
+    #     pred_scores = pred.get("scores", torch.ones(len(pred_boxes))).cpu()  # 没有scores就全置1
+
+    #     # 按置信度从大到小排序预测框
+    #     sorted_indices = torch.argsort(pred_scores, descending=True)
+    #     pred_boxes = pred_boxes[sorted_indices]
+    #     pred_labels = pred_labels[sorted_indices]
+
+    #     matched_gt = set()
+    #     tp = 0
+    #     fp = 0
+
+    #     for pb, pl in zip(pred_boxes, pred_labels):
+    #         ious = []
+    #         for idx, (gb, gl) in enumerate(zip(gt_boxes, gt_labels)):
+    #             if idx in matched_gt:
+    #                 ious.append(0)  # 已匹配的GT不再考虑
+    #             elif pl == gl:
+    #                 ious.append(iou(pb, gb))
+    #             else:
+    #                 ious.append(0)
+    #         max_iou = max(ious) if ious else 0
+    #         max_idx = ious.index(max_iou) if ious else -1
+
+    #         if max_iou >= iou_threshold:
+    #             tp += 1
+    #             matched_gt.add(max_idx)
+    #         else:
+    #             fp += 1
+
+    #     fn = len(gt_boxes) - len(matched_gt)
+
+    #     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    #     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    #     f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+    #     return {
+    #         "TP": tp,
+    #         "FP": fp,
+    #         "FN": fn,
+    #         "Precision": precision,
+    #         "Recall": recall,
+    #         "F1": f1
+    #     }
     def evaluate_detection_metrics(gt, pred, iou_threshold=0.5):
 
         gt_boxes = gt["boxes"].cpu()
@@ -446,9 +496,16 @@ def main():
 
         pred_boxes = pred["boxes"].cpu()
         pred_labels = pred["labels"].cpu()
-        pred_scores = pred.get("scores", torch.ones(len(pred_boxes))).cpu()  # 没有scores就全置1
+        pred_scores = pred.get("scores", torch.ones(len(pred_boxes))).cpu()
 
-        # 按置信度从大到小排序预测框
+        # === 只保留预测中类别 ∈ GT类别 的框 ===
+        gt_class_set = set(gt_labels.tolist())
+        pred_mask = torch.tensor([lbl.item() in gt_class_set for lbl in pred_labels])
+        pred_boxes = pred_boxes[pred_mask]
+        pred_labels = pred_labels[pred_mask]
+        pred_scores = pred_scores[pred_mask]
+
+        # 按置信度排序
         sorted_indices = torch.argsort(pred_scores, descending=True)
         pred_boxes = pred_boxes[sorted_indices]
         pred_labels = pred_labels[sorted_indices]
@@ -456,22 +513,25 @@ def main():
         matched_gt = set()
         tp = 0
         fp = 0
+        iou_sum = 0.0  # 用于累积匹配对的IoU
 
         for pb, pl in zip(pred_boxes, pred_labels):
             ious = []
             for idx, (gb, gl) in enumerate(zip(gt_boxes, gt_labels)):
                 if idx in matched_gt:
-                    ious.append(0)  # 已匹配的GT不再考虑
+                    ious.append(0)
                 elif pl == gl:
                     ious.append(iou(pb, gb))
                 else:
                     ious.append(0)
+
             max_iou = max(ious) if ious else 0
             max_idx = ious.index(max_iou) if ious else -1
 
             if max_iou >= iou_threshold:
                 tp += 1
                 matched_gt.add(max_idx)
+                iou_sum += max_iou  # 累积匹配上的IoU
             else:
                 fp += 1
 
@@ -480,6 +540,7 @@ def main():
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0
         f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        mean_iou = iou_sum / tp if tp > 0 else 0
 
         return {
             "TP": tp,
@@ -487,8 +548,10 @@ def main():
             "FN": fn,
             "Precision": precision,
             "Recall": recall,
-            "F1": f1
+            "F1": f1,
+            "Mean IoU": mean_iou
         }
+
     
     
     for index in opt.indexes:
@@ -548,7 +611,10 @@ def main():
 
             # ------------计算metric------------------------------------
             metrics = evaluate_detection_metrics(gt=og_img_guide[0], pred=pred)
-            print(f"Image {n}: TP={metrics['TP']}, FP={metrics['FP']}, FN={metrics['FN']}, Precision={metrics['Precision']:.3f}, Recall={metrics['Recall']:.3f}, F1={metrics['F1']:.3f}")
+            # print(f"Image {n}: TP={metrics['TP']}, FP={metrics['FP']}, FN={metrics['FN']}, Precision={metrics['Precision']:.3f}, Recall={metrics['Recall']:.3f}, F1={metrics['F1']:.3f}")
+            print(f"Image {n}: TP={metrics['TP']}, FP={metrics['FP']}, FN={metrics['FN']}, "
+                f"Precision={metrics['Precision']:.3f}, Recall={metrics['Recall']:.3f}, "
+                f"F1={metrics['F1']:.3f}, Mean IoU={metrics['Mean IoU']:.3f}")
 
             # ----------同时绘制 Ground Truth（红）+ Predicted（绿） ----------
             # box_combined = draw_gt_and_detected_boxes(
