@@ -563,7 +563,7 @@ def main():
                 gt=og_img_guide[0],                  
                 pred=pred,                           
                 categories=obj_categories,
-                obj_categories=obj_det_cats, 
+                obj_det_cats=obj_det_cats, 
                 score_thresh=0.8                     
             )
 
