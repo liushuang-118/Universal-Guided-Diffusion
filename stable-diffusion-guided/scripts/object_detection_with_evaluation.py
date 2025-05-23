@@ -567,7 +567,7 @@ def main():
 
         # === 只保留预测中类别 ∈ GT类别 的框 ===
         gt_class_set = set(gt_labels.tolist())
-        pred_mask = torch.tensor([lbl.item() in gt_class_set for lbl in pred_labels])
+        pred_mask = torch.tensor([lbl.item() in gt_class_set for lbl in pred_labels], dtype=torch.bool)
         pred_boxes = pred_boxes[pred_mask]
         pred_labels = pred_labels[pred_mask]
         pred_scores = pred_scores[pred_mask]
