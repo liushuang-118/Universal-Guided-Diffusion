@@ -230,7 +230,7 @@ def get_optimation_details(args):
 
     return operation, l_func
 
-def main():
+def actual_main():
     parser = argparse.ArgumentParser()
 
 
@@ -414,6 +414,17 @@ def main():
 
         if batch_ind == opt.batches:
             break
+
+def main():
+    tracer = trace.Trace(
+       ignoredirs=[sys.prefix, sys.exec_prefix],
+       trace=False,
+       count=True
+    )
+    tracer.runfunc(actual_main)
+    results = tracer.results()
+    results.write_results(show_missing=True, coverdir="trace_results")
+    print("Trace results written to trace_results directory")
 
 
 
